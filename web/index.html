@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CG Context Optimizer</title>
+<style>
+:root{--bg:#0a1424;--panel:#101f36;--panel2:#0c192d;--border:#1e3355;--text:#e6edf7;--muted:#8da2c0;--teal:#2dd4bf;--blue:#4f9cf9;--warn:#f5b042;--bad:#f87171;--good:#4ade80}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 "Segoe UI",system-ui,sans-serif}
+.wrap{max-width:1180px;margin:0 auto;padding:24px 18px 60px}
+h1{margin:0;font-size:30px}
+.sub{color:var(--teal);margin:2px 0 10px;font-size:16px}
+.badges span{display:inline-block;border:1px solid var(--teal);color:var(--teal);border-radius:20px;padding:2px 10px;font-size:11px;letter-spacing:.06em;margin:0 6px 6px 0}
+section{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:18px;margin:18px 0}
+h2{font-size:14px;letter-spacing:.08em;text-transform:uppercase;color:var(--teal);margin:0 0 12px}
+h3{font-size:14px;margin:14px 0 6px;color:var(--blue)}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
+.card{background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:12px}
+.card .l{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.05em}
+.card .v{font-size:21px;font-weight:600;margin-top:2px}
+.card .s{color:var(--muted);font-size:12px}
+.neg{color:var(--bad)}.pos{color:var(--good)}
+button{background:var(--blue);color:#06101f;border:0;border-radius:6px;padding:8px 14px;font:inherit;font-weight:600;cursor:pointer}
+button.alt{background:transparent;color:var(--teal);border:1px solid var(--teal)}
+button:disabled{opacity:.45;cursor:not-allowed}
+textarea,input[type=text],select{background:var(--panel2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px;font:inherit;width:100%}
+textarea{min-height:130px;font:13px Consolas,monospace}
+pre{background:#08111f;border:1px solid var(--border);border-radius:6px;padding:10px;overflow:auto;font:12.5px/1.45 Consolas,monospace;max-height:320px;margin:6px 0}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{padding:6px 8px;border-bottom:1px solid var(--border);text-align:left;vertical-align:top}
+th{color:var(--muted);font-weight:600}
+.bar{height:10px;background:#08111f;border-radius:5px;overflow:hidden;min-width:60px}
+.bar i{display:block;height:100%;background:var(--teal)}
+.bar.b i{background:var(--blue)}
+.pipe{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.step{border:1px solid var(--border);background:var(--panel2);border-radius:6px;padding:5px 10px;font-size:13px}
+.arrow{color:var(--teal)}
+.note{color:var(--muted);font-size:13px}
+.warnbox{border:1px solid var(--warn);background:rgba(245,176,66,.08);border-radius:6px;padding:10px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:8px}
+.row>*{flex:0 0 auto}.row .grow{flex:1 1 260px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:820px){.two{grid-template-columns:1fr}}
+.item{border:1px solid var(--border);border-radius:8px;padding:10px;margin:10px 0;background:var(--panel2)}
+.tag{font-size:11px;border-radius:4px;padding:1px 6px;margin-right:6px;background:#17294a;color:var(--teal)}
+.mono{font-family:Consolas,monospace;font-size:13px}
+ul{margin:6px 0 6px 18px;padding:0}
+label.chk{display:block;margin:4px 0}
+details summary{cursor:pointer;color:var(--blue);margin:8px 0}
+.scroll{max-height:380px;overflow:auto}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>CG Context Optimizer</h1>
+  <div class="sub">Graph-guided context in. Concise answer out.</div>
+  <div class="badges"><span>LOCAL</span><span>MODEL-AGNOSTIC</span><span>OFFLINE</span><span>NO EXTERNAL API REQUIRED</span></div>
+  <p class="note">The CLI is the core research system. This dashboard visualizes retrieval, context metrics, benchmark evidence, and optional manual model comparisons.</p>
+
+  <section>
+    <h2>Pipeline</h2>
+    <div class="pipe" id="pipe"></div>
+    <p class="note">cg-cli does not execute, control, or inspect the internal tool loop of external AI models. External model comparison is optional and manual.</p>
+  </section>
+
+  <section>
+    <h2>Demo and question</h2>
+    <div class="row">
+      <button id="demoBtn">Run Demo</button>
+      <span class="note" id="demoInfo">Demo project: loading...</span>
+    </div>
+    <div class="row">
+      <input class="grow" type="text" id="question" placeholder="Ask a developer question about the demo project">
+      <button id="analyzeBtn">Analyze</button>
+    </div>
+    <div class="row">
+      <select class="grow" id="questionList"><option value="">Existing benchmark questions for this demo project...</option></select>
+      <label>Depth
+        <select id="depth" style="width:auto"><option value="0">0 (seeds only)</option><option value="1" selected>1</option><option value="2">2</option></select>
+      </label>
+      <label><input type="checkbox" id="adaptive"> Adaptive</label>
+    </div>
+    <div class="note" id="status" style="margin-top:8px"></div>
+  </section>
+
+  <div id="analysisOut"></div>
+
+  <section>
+    <h2>Caveman Filter - Compact Response Protocol</h2>
+    <p class="note">A model-neutral prompt. It is not an offline model, it does not rewrite responses, and it does not guarantee that a model complies or preserves meaning.</p>
+    <pre id="cavemanText"></pre>
+    <div class="row">
+      <button class="alt" id="copyCaveman">Copy Caveman Prompt</button>
+      <button class="alt" id="copyContext" disabled>Copy Optimized Context</button>
+      <button class="alt" id="copyBoth" disabled>Copy Prompt + Optimized Context</button>
+      <button class="alt" id="copyBaseline" disabled>Copy Baseline Context (whole files)</button>
+      <span class="note" id="copyMsg"></span>
+    </div>
+  </section>
+
+  <section>
+    <h2>Model comparison (manual)</h2>
+    <p class="note">Paste responses you obtained yourself from Claude, ChatGPT, Gemini or another model. Nothing is sent anywhere; the checks run locally.</p>
+    <div class="row">
+      <label>Model
+        <select id="model" style="width:auto"><option value="">(not specified)</option><option>Claude</option><option>GPT</option><option>Gemini</option><option>Other</option></select>
+      </label>
+    </div>
+    <div class="two">
+      <div><h3>Baseline model response</h3><textarea id="baseResp" placeholder="Paste the response obtained with the baseline context"></textarea></div>
+      <div><h3>Compact/Caveman model response</h3><textarea id="compactResp" placeholder="Paste the response obtained with the optimized context and Caveman prompt"></textarea></div>
+    </div>
+    <div class="row"><button id="compareBtn">Compare Responses</button><span class="note" id="compareMsg"></span></div>
+    <div id="compareOut"></div>
+    <p class="note">Response-length reduction is measured. Functional or semantic equivalence is not automatically determined.</p>
+
+    <h3>Manual response quality evaluation</h3>
+    <label class="chk"><input type="checkbox" id="ev1"> Baseline answer is correct</label>
+    <label class="chk"><input type="checkbox" id="ev2"> Optimized answer is correct</label>
+    <label class="chk"><input type="checkbox" id="ev3"> Optimized answer contains required technical information</label>
+    <label class="chk"><input type="checkbox" id="ev4"> Optimized answer is functionally equivalent</label>
+    <label class="chk"><input type="checkbox" id="ev5"> Optimized answer omits important information</label>
+    <textarea id="notes" style="min-height:70px" placeholder="Reviewer notes"></textarea>
+    <p class="note">Semantic/functional preservation requires human evaluation unless a separately validated evaluation method is added. These boxes are kept only for this browser session.</p>
+  </section>
+
+  <section>
+    <h2>Experimental conditions</h2>
+    <div id="conditions"></div>
+    <p class="note">Which condition a pasted response belongs to is your declaration; cg-cli does not verify how a response was produced.</p>
+  </section>
+
+  <section id="summaryCard" style="border-color:var(--teal)">
+    <h2>CG-CLI Experiment Summary</h2>
+    <div id="summary"></div>
+  </section>
+
+  <section>
+    <h2>Benchmark and ablation</h2>
+    <div id="benchmark">Loading...</div>
+  </section>
+
+  <section>
+    <h2>Research limitations</h2>
+    <ol>
+      <li>Token counts are local estimates based on characters &divide; 4, not exact provider token counts.</li>
+      <li>Current static graph retrieval primarily targets JavaScript/TypeScript.</li>
+      <li>Static analysis may miss dynamic runtime relationships and instance-method calls such as service.create().</li>
+      <li>Retrieval operations are not actual internal AI-model tool calls.</li>
+      <li>Actual AI tool-call reduction is not measured unless agent transcripts are supplied.</li>
+      <li>Response semantic/functional equivalence requires human evaluation or a separately validated evaluator.</li>
+      <li>Controlled fixture benchmarks may not fully generalize to real open-source repositories.</li>
+      <li>Gold expected-symbol sets produced by the same fixture generator can introduce evaluation bias.</li>
+      <li>Adaptive confidence is heuristic and is not statistically calibrated.</li>
+      <li>Model behavior differs between Claude, GPT, Gemini, and other systems.</li>
+      <li>Real open-source repository evaluation remains future work unless genuinely implemented and tested.</li>
+    </ol>
+    <p class="note">Token counts are local estimates for comparison. Actual token counts vary by model tokenizer, source code, system messages, structured requests, tool schemas, and provider behavior.</p>
+  </section>
+</div>
+
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var state = { status: null, analysis: null, compare: null };
+  var NM = 'Not measured';
+
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function fmt(n) { return n === null || n === undefined ? NM : Number(n).toLocaleString(); }
+  function fmt1(n) { return n === null || n === undefined ? NM : Number(n).toFixed(1); }
+  function pct(v) { return v === null || v === undefined ? NM : v.toFixed(1) + '%'; }
+  function pcls(v) { return v === null || v === undefined ? '' : (v < 0 ? 'neg' : 'pos'); }
+  function card(l, v, s, cls) {
+    return '<div class="card"><div class="l">' + esc(l) + '</div><div class="v ' + (cls || '') + '">' + v + '</div><div class="s">' + s + '</div></div>';
+  }
+  function bar(v, max, cls) {
+    var w = v === null || v === undefined ? 0 : Math.max(0, Math.min(100, (v / max) * 100));
+    return '<div class="bar ' + (cls || '') + '"><i style="width:' + w + '%"></i></div>';
+  }
+  async function api(url, body) {
+    var opts = body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {};
+    var res = await fetch(url, opts);
+    var data = await res.json().catch(function () { return {}; });
+    if (!res.ok) throw new Error(data.error || 'Request failed (' + res.status + ')');
+    return data;
+  }
+  function copy(text, label) {
+    function done(ok) { $('copyMsg').textContent = ok ? label + ' copied.' : 'Copy failed. Select the text manually.'; }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () { done(true); }, function () { done(false); });
+    } else {
+      var t = document.createElement('textarea'); t.value = text; document.body.appendChild(t); t.select();
+      var ok = false; try { ok = document.execCommand('copy'); } catch (e) {} document.body.removeChild(t); done(ok);
+    }
+  }
+
+  // ---------- pipeline ----------
+  var STEPS = ['Developer Question', 'Baseline Context', 'Graft Engine', 'Code Graph', 'Relevant Nodes', 'Compact Context', 'External AI Model', 'Caveman Filter', 'Concise Answer', 'Evaluation'];
+  $('pipe').innerHTML = STEPS.map(function (s, i) {
+    return '<div class="step">' + esc(s) + '</div>' + (i < STEPS.length - 1 ? '<span class="arrow">&rarr;</span>' : '');
+  }).join('');
+
+  // ---------- graph ----------
+  var NODE_COLOR = { 'function': '#2dd4bf', method: '#4f9cf9', 'class': '#a78bfa', symbol: '#f5b042', file: '#8da2c0' };
+  var EDGE_COLOR = { CALLS: '#2dd4bf', REFERENCES: '#4f9cf9', IMPORTS: '#f5b042', EXPORTS: '#a78bfa', CONTAINS: '#8da2c0' };
+  function drawGraph(g) {
+    var W = 760, H = 440, cx = W / 2, cy = H / 2, n = g.nodes.length, pos = {};
+    g.nodes.forEach(function (node, i) {
+      var a = (2 * Math.PI * i) / n - Math.PI / 2;
+      pos[node.id] = n === 1 ? { x: cx, y: cy } : { x: cx + (W / 2 - 110) * Math.cos(a), y: cy + (H / 2 - 50) * Math.sin(a) };
+    });
+    var svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;background:#08111f;border:1px solid var(--border);border-radius:8px">';
+    svg += '<defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#8da2c0"/></marker></defs>';
+    g.edges.forEach(function (e) {
+      var a = pos[e.from], b = pos[e.to]; if (!a || !b) return;
+      var mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+      svg += '<line x1="' + a.x + '" y1="' + a.y + '" x2="' + b.x + '" y2="' + b.y + '" stroke="' + (EDGE_COLOR[e.type] || '#8da2c0') + '" stroke-width="1.5" marker-end="url(#arr)" opacity=".8"/>';
+      svg += '<text x="' + mx + '" y="' + my + '" fill="#8da2c0" font-size="9" text-anchor="middle">' + esc(e.type) + '</text>';
+    });
+    g.nodes.forEach(function (node) {
+      var p = pos[node.id]; var label = node.name.length > 26 ? node.name.slice(0, 25) + '...' : node.name;
+      svg += '<circle cx="' + p.x + '" cy="' + p.y + '" r="9" fill="' + (NODE_COLOR[node.type] || '#8da2c0') + '" stroke="' + (node.role === 'seed' ? '#fff' : '#0a1424') + '" stroke-width="2"/>';
+      svg += '<text x="' + p.x + '" y="' + (p.y + 23) + '" fill="#e6edf7" font-size="11" text-anchor="middle">' + esc(label) + '</text>';
+    });
+    svg += '</svg>';
+    var legend = '<p class="note">Node color = type: ' + Object.keys(NODE_COLOR).map(function (k) { return '<span style="color:' + NODE_COLOR[k] + '">' + k + '</span>'; }).join(', ') +
+      '. White ring = seed node. Edges are real index edges between selected nodes.</p>';
+    return svg + legend;
+  }
+
+  // ---------- analysis ----------
+  function renderAnalysis(a) {
+    var out = $('analysisOut');
+    if (a.noMatch) {
+      out.innerHTML = '<section><h2>Retrieval result</h2><div class="warnbox">No relevant code was found for this question (insufficient evidence in the index). Search terms used: ' +
+        esc(a.terms.join(', ') || '(none)') + '.</div><p class="note">Try naming a function, file or other specific word that appears in the code.</p></section>';
+      return;
+    }
+    var m = a.metrics, red = m.reductionPct;
+    var redNote = red === null ? 'Baseline is empty.' : (red < 0 ? 'Selected context exceeded the defined baseline.' : 'Selected context is smaller than the defined baseline.');
+    var html = '<section><h2>Inbound - Graft Engine</h2><div class="cards">' +
+      card('Baseline context', fmt(m.baselineChars) + ' chars', 'Estimated tokens (characters &divide; 4): ~' + fmt(m.baselineTokens)) +
+      card('Selected context', fmt(m.selectedChars) + ' chars', 'Estimated tokens (characters &divide; 4): ~' + fmt(m.selectedTokens)) +
+      card('Context reduction', pct(red), esc(redNote), pcls(red)) +
+      card('Selected nodes', fmt(m.selectedNodes), a.counts.seeds + ' seed(s) + ' + a.counts.related + ' related') +
+      card('Retrieval depth', esc(String(a.retrieval.depth)), a.retrieval.adaptive ? 'Adaptive: expanded = ' + (a.retrieval.confidence.expanded ? 'yes' : 'no') : 'Adaptive: off') +
+      card('Context retrieval units', fmt(m.baselineUnits) + ' &rarr; ' + fmt(m.selectedUnits), 'files &rarr; node slices (NOT AI tool calls)') +
+      card('Actual AI tool calls', NM, 'No agent transcript supplied') + '</div>';
+
+    html += '<h3>Baseline policy</h3><div class="note">' + esc(a.baseline.policy) + '</div>';
+    html += '<h3>Files</h3><div class="note">Files considered (indexed in demo project): ' + fmt(a.project.files) + ' | files containing selected nodes (= baseline files): ' + fmt(a.baseline.files.length) +
+      ' | whole indexed project, reference only: ' + fmt(a.baseline.projectChars) + ' chars</div>';
+    html += '<table><tr><th>Baseline file</th><th>Characters</th></tr>' + a.baseline.files.map(function (f) {
+      return '<tr><td class="mono">' + esc(f.path) + '</td><td>' + fmt(f.chars) + '</td></tr>';
+    }).join('') + '</table>';
+
+    var max = Math.max(m.baselineChars, m.selectedChars, 1);
+    html += '<h3>Baseline context vs graph-selected compact context</h3>' +
+      '<div class="note">Baseline: ' + fmt(m.baselineChars) + ' chars</div>' + bar(m.baselineChars, max) +
+      '<div class="note" style="margin-top:6px">Selected: ' + fmt(m.selectedChars) + ' chars</div>' + bar(m.selectedChars, max, 'b');
+
+    html += '<h3>Retrieval details</h3><ul>' +
+      '<li>Query terms: <span class="mono">' + esc(a.retrieval.terms.join(', ') || '(none)') + '</span></li>' +
+      '<li>Retrieval confidence heuristic: initial ' + (a.retrieval.confidence.initial * 100).toFixed(0) + '%, final ' + (a.retrieval.confidence.final * 100).toFixed(0) + '% (not calibrated)</li>' +
+      '<li>Graph relations followed: ' + (a.relationsFollowed.length ? '' : 'none (depth 0 or no relations)') + '</li></ul>' +
+      (a.relationsFollowed.length ? '<ul>' + a.relationsFollowed.map(function (r) { return '<li class="mono">' + esc(r) + '</li>'; }).join('') + '</ul>' : '') +
+      (a.skipped.length ? '<div class="warnbox">Skipped (over budget): ' + esc(a.skipped.join('; ')) + '</div>' : '');
+
+    if (a.recall) {
+      html += '<h3>Retrieval recall (gold data exists for this benchmark question)</h3>';
+      html += a.recall.error ? '<div class="warnbox">' + esc(a.recall.error) + '</div>' :
+        '<div class="note">Case ' + esc(a.recall.caseId) + ': ' + a.recall.hits + ' of ' + a.recall.expected + ' expected symbols in the packet = ' + pct(a.recall.recallPct) +
+        (a.recall.missedNotRetrieved.length ? '. Never retrieved: ' + esc(a.recall.missedNotRetrieved.join(', ')) : '') +
+        (a.recall.missedBudget.length ? '. Over budget: ' + esc(a.recall.missedBudget.join(', ')) : '') + '</div>';
+    } else {
+      html += '<h3>Retrieval recall</h3><div class="note">' + NM + ': no gold symbol set exists for a free-form question. Recall is only measured for benchmark cases.</div>';
+    }
+    html += '</section>';
+
+    html += '<section><h2>Retrieved subgraph</h2>' + drawGraph(a.graph) + '</section>';
+
+    html += '<section><h2>Selected source context (exact slices)</h2>' + a.items.map(function (it) {
+      return '<div class="item"><div><span class="tag">' + esc(it.role) + '</span><span class="tag">' + esc(it.type) + '</span><b class="mono">' + esc(it.symbol) + '</b></div>' +
+        '<div class="note mono">' + esc(it.file) + ' : lines ' + it.startLine + '-' + it.endLine + '</div>' +
+        '<div class="note">Relationship: ' + esc(it.relationship) + '</div><pre>' + esc(it.source) + '</pre></div>';
+    }).join('') + '</section>';
+
+    out.innerHTML = html;
+  }
+
+  function enableCopy(a) {
+    var ok = !!(a && !a.noMatch);
+    ['copyContext', 'copyBoth', 'copyBaseline'].forEach(function (id) { $(id).disabled = !ok; });
+  }
+
+  async function analyze(question) {
+    $('status').textContent = 'Analyzing...';
+    $('analyzeBtn').disabled = true; $('demoBtn').disabled = true;
+    try {
+      var data = await api('/api/analyze', { question: question, depth: Number($('depth').value), adaptive: $('adaptive').checked });
+      state.analysis = data;
+      renderAnalysis(data); enableCopy(data);
+      $('status').textContent = data.noMatch ? 'No relevant code found.' : 'Done.';
+    } catch (e) {
+      $('status').textContent = 'Error: ' + e.message;
+    } finally {
+      $('analyzeBtn').disabled = false; $('demoBtn').disabled = false;
+      renderConditions(); renderSummary();
+    }
+  }
+
+  // ---------- comparison ----------
+  function secMark(s) { return ['Answer', 'Evidence', 'Action', 'Risk'].map(function (k) { return k + ': ' + (s[k] ? 'yes' : 'no'); }).join(' | '); }
+  function side(d) {
+    if (!d.provided) return ['Not provided', '', '', '', '', ''];
+    return [fmt(d.chars), '~' + fmt(d.estimatedTokens), fmt(d.words), d.greeting ? 'yes' : 'no', d.needAnswer ? 'Need: answer (insufficient context)' : secMark(d.sections), d.warnings.length ? esc(d.warnings.join(' ')) : 'none'];
+  }
+  function renderCompare(c) {
+    var b = side(c.baseline), o = side(c.compact);
+    var labels = ['Characters', 'Estimated tokens (characters &divide; 4)', 'Word count', 'Greeting detected', 'Required sections', 'Compactness warnings'];
+    var rows = labels.map(function (l, i) { return '<tr><td>' + l + '</td><td>' + b[i] + '</td><td>' + o[i] + '</td></tr>'; }).join('');
+    var rr = c.responseReductionPct;
+    $('compareOut').innerHTML = '<table><tr><th></th><th>Baseline response</th><th>Compact/Caveman response</th></tr>' + rows + '</table>' +
+      '<div class="cards" style="margin-top:10px">' + card('Response-length reduction', pct(rr), rr === null ? 'Needs both responses' : (rr < 0 ? 'Compact response was longer.' : 'Compact response was shorter.'), pcls(rr)) + '</div>' +
+      '<p class="note">Required-section checks on the baseline response are informational only (it was not asked to follow the format).</p>';
+  }
+  async function compare() {
+    $('compareMsg').textContent = 'Comparing...';
+    try {
+      var data = await api('/api/compare', { model: $('model').value, baselineResponse: $('baseResp').value, compactResponse: $('compactResp').value });
+      state.compare = data; renderCompare(data); $('compareMsg').textContent = '';
+    } catch (e) { $('compareMsg').textContent = 'Error: ' + e.message; }
+    renderConditions(); renderSummary();
+  }
+
+  // ---------- manual evaluation ----------
+  var EV = [['ev1', 'Baseline answer is correct'], ['ev2', 'Optimized answer is correct'], ['ev3', 'Optimized answer contains required technical information'], ['ev4', 'Optimized answer is functionally equivalent'], ['ev5', 'Optimized answer omits important information']];
+  function saveEval() {
+    try { var d = { notes: $('notes').value }; EV.forEach(function (e) { d[e[0]] = $(e[0]).checked; }); sessionStorage.setItem('cg-eval', JSON.stringify(d)); } catch (e) {}
+    renderSummary();
+  }
+  function loadEval() {
+    try { var d = JSON.parse(sessionStorage.getItem('cg-eval') || '{}'); EV.forEach(function (e) { $(e[0]).checked = !!d[e[0]]; }); $('notes').value = d.notes || ''; } catch (e) {}
+  }
+
+  // ---------- conditions and summary ----------
+  function renderConditions() {
+    var a = state.analysis && !state.analysis.noMatch ? state.analysis : null, c = state.compare;
+    function ctx(kind) {
+      if (!a) return NM;
+      var chars = kind === 'baseline' ? a.metrics.baselineChars : a.metrics.selectedChars;
+      var tok = kind === 'baseline' ? a.metrics.baselineTokens : a.metrics.selectedTokens;
+      return fmt(chars) + ' chars (~' + fmt(tok) + ' est. tokens)';
+    }
+    function resp(d) { return d && d.provided ? fmt(d.chars) + ' chars (~' + fmt(d.estimatedTokens) + ' est. tokens)' : NM; }
+    var rows = [
+      ['A. Baseline', 'whole files', ctx('baseline'), resp(c && c.baseline)],
+      ['B. Graft Engine only', 'selected slices', ctx('selected'), NM],
+      ['C. Caveman Filter only', 'whole files', ctx('baseline'), NM],
+      ['D. Graft Engine + Caveman Filter', 'selected slices', ctx('selected'), resp(c && c.compact)],
+    ];
+    $('conditions').innerHTML = '<table><tr><th>Condition</th><th>Context supplied</th><th>Context size</th><th>Response size (as pasted)</th></tr>' +
+      rows.map(function (r) { return '<tr><td>' + esc(r[0]) + '</td><td>' + esc(r[1]) + '</td><td>' + r[2] + '</td><td>' + r[3] + '</td></tr>'; }).join('') + '</table>';
+  }
+
+  function renderSummary() {
+    var a = state.analysis && !state.analysis.noMatch ? state.analysis : null, c = state.compare;
+    var m = a ? a.metrics : null;
+    var checked = EV.filter(function (e) { return $(e[0]).checked; }).map(function (e) { return e[1]; });
+    var anyResp = c && (c.baseline.provided || c.compact.provided);
+    var info = checked.length ? 'Manual evaluation: ' + esc(checked.join('; ')) : 'Not evaluated';
+    var model = anyResp ? esc($('model').value || 'Not specified') : 'Not executed';
+    function line(l, v) { return '<div style="margin:3px 0"><span class="note">' + l + '</span><br><b>' + v + '</b></div>'; }
+    $('summary').innerHTML = '<div class="two"><div><h3>INBOUND - GRAFT ENGINE</h3>' +
+      line('Baseline context', m ? fmt(m.baselineChars) + ' characters / ' + fmt(m.baselineTokens) + ' estimated tokens' : NM) +
+      line('Optimized context', m ? fmt(m.selectedChars) + ' characters / ' + fmt(m.selectedTokens) + ' estimated tokens' : NM) +
+      line('Estimated context reduction', m ? '<span class="' + pcls(m.reductionPct) + '">' + pct(m.reductionPct) + '</span>' : NM) +
+      line('Relevant nodes', m ? fmt(m.selectedNodes) : NM) +
+      line('Retrieval operations (context retrieval units, not AI tool calls)', m ? fmt(m.baselineUnits) + ' files &rarr; ' + fmt(m.selectedUnits) + ' slices' : NM) +
+      line('Actual AI tool calls', NM) + '</div>' +
+      '<div><h3>OUTBOUND - CAVEMAN FILTER</h3>' +
+      line('Baseline response', c && c.baseline.provided ? fmt(c.baseline.chars) + ' characters / ' + fmt(c.baseline.estimatedTokens) + ' estimated tokens' : NM) +
+      line('Compact response', c && c.compact.provided ? fmt(c.compact.chars) + ' characters / ' + fmt(c.compact.estimatedTokens) + ' estimated tokens' : NM) +
+      line('Measured response-length reduction', c ? '<span class="' + pcls(c.responseReductionPct) + '">' + pct(c.responseReductionPct) + '</span>' : NM) +
+      line('Information preservation', info) +
+      line('MODEL', model) + '</div></div>' +
+      '<p class="note">Values are estimates from local measurement. A value that has not been measured or supplied is shown as "Not measured".</p>';
+  }
+
+  // ---------- benchmark ----------
+  function renderBenchmark(b) {
+    var el = $('benchmark');
+    if (!b.available) { el.innerHTML = '<div class="warnbox">No benchmark results available.</div><p class="note">Results are read from benchmarks/results/runs.json, which is written by the command-line tool: cg benchmark.</p>'; return; }
+    var p = b.primary;
+    var html = '<div class="note">Run ' + esc(b.runId) + ' | dataset ' + esc(b.datasetFile) + ' | ' + b.repositories + ' projects | budget ' + b.budget + ' chars</div>' +
+      '<p class="note">' + esc(b.baselinePolicy) + '</p><h3>Primary variant: ' + esc(p.label) + '</h3><div class="cards">' +
+      card('Total cases', fmt(p.cases), 'successful ' + fmt(p.successful) + ' | no-match ' + fmt(p.noMatch) + ' | errors ' + fmt(p.errors)) +
+      card('Average retrieval recall', pct(p.recall), 'against manually defined gold symbols') +
+      card('Average context reduction', pct(p.reduction), 'vs the whole-file baseline', pcls(p.reduction)) +
+      card('Average selected', fmt(Math.round(p.selectedChars)) + ' chars', '~' + fmt(Math.round(p.selectedTokens)) + ' est. tokens') +
+      card('Average baseline', fmt(Math.round(p.baselineChars)) + ' chars', '~' + fmt(Math.round(p.baselineTokens)) + ' est. tokens') +
+      card('Average selected nodes', fmt1(p.selectedNodes), 'per successful case') + '</div>';
+
+    html += '<h3>Ablation (actual variants in this run)</h3><table><tr><th>Variant</th><th>Recall</th><th></th><th>Context reduction</th><th>Avg selected chars (est. tokens)</th><th>Avg selected nodes</th></tr>' +
+      b.variants.map(function (v) {
+        return '<tr><td>' + esc(v.label) + '</td><td>' + pct(v.recall) + '</td><td style="width:140px">' + bar(v.recall, 100) + '</td><td class="' + pcls(v.reduction) + '">' + pct(v.reduction) +
+          '</td><td>' + fmt(Math.round(v.selectedChars)) + ' (~' + fmt(Math.round(v.selectedTokens)) + ')</td><td>' + fmt1(v.selectedNodes) + '</td></tr>';
+      }).join('') + '</table>' +
+      '<p class="note">More graph expansion can improve retrieval recall but may increase selected context and reduce or remove context savings. The baseline is recomputed for each variant (the files of the nodes included), so reductions across variants use different denominators.</p>';
+
+    html += '<h3>Category breakdown (' + esc(p.label) + ')</h3><table><tr><th>Category</th><th>Cases</th><th>Recall</th><th></th><th>Context reduction</th></tr>' +
+      b.categories.map(function (c) {
+        return '<tr><td>' + esc(c.label) + '</td><td>' + c.cases + '</td><td>' + pct(c.recall) + '</td><td style="width:140px">' + bar(c.recall, 100) + '</td><td class="' + pcls(c.reduction) + '">' + pct(c.reduction) + '</td></tr>';
+      }).join('') + '</table>';
+
+    html += '<details><summary>Per-case results (' + b.cases.length + ')</summary><div class="scroll"><table><tr><th>ID</th><th>Category</th><th>Status</th><th>Recall</th><th>Reduction</th><th>Nodes</th><th>Selected chars</th><th>Baseline chars</th></tr>' +
+      b.cases.map(function (r) {
+        return '<tr><td>' + esc(r.id) + '</td><td>' + esc(r.category) + '</td><td>' + esc(r.status) + '</td><td>' + pct(r.recall) + '</td><td class="' + pcls(r.reduction) + '">' + pct(r.reduction) +
+          '</td><td>' + fmt(r.nodes) + '</td><td>' + fmt(r.selectedChars) + '</td><td>' + fmt(r.baselineChars) + '</td></tr>';
+      }).join('') + '</table></div></details>';
+    el.innerHTML = html;
+  }
+
+  // ---------- init ----------
+  async function init() {
+    EV.forEach(function (e) { $(e[0]).addEventListener('change', saveEval); });
+    $('notes').addEventListener('input', saveEval);
+    loadEval();
+    $('analyzeBtn').addEventListener('click', function () { var q = $('question').value.trim(); if (q) analyze(q); else $('status').textContent = 'Please enter a question.'; });
+    $('question').addEventListener('keydown', function (e) { if (e.key === 'Enter') $('analyzeBtn').click(); });
+    $('demoBtn').addEventListener('click', function () { $('question').value = state.status.defaultQuestion; analyze(state.status.defaultQuestion); });
+    $('questionList').addEventListener('change', function () { if ($('questionList').value) $('question').value = $('questionList').value; });
+    $('compareBtn').addEventListener('click', compare);
+    $('copyCaveman').addEventListener('click', function () { copy(state.status.cavemanPrompt, 'Caveman prompt'); });
+    $('copyContext').addEventListener('click', function () { copy(state.analysis.optimizedContext, 'Optimized context'); });
+    $('copyBoth').addEventListener('click', function () { copy(state.status.cavemanPrompt + '\n\n' + state.analysis.optimizedContext, 'Prompt + optimized context'); });
+    $('copyBaseline').addEventListener('click', function () { copy(state.analysis.baselineContext, 'Baseline context'); });
+
+    try {
+      state.status = await api('/api/status');
+      $('cavemanText').textContent = state.status.cavemanPrompt;
+      $('question').value = state.status.defaultQuestion;
+      $('demoInfo').textContent = state.status.demoAvailable ? 'Demo project: ' + state.status.demoPath + ' (existing benchmark fixture)' : 'Demo project not found. Run: node benchmarks/generate.js';
+      $('demoBtn').disabled = !state.status.demoAvailable; $('analyzeBtn').disabled = !state.status.demoAvailable;
+      var qs = await api('/api/questions');
+      qs.questions.forEach(function (q) {
+        var o = document.createElement('option'); o.value = q.question; o.textContent = q.id + ' - ' + q.question; $('questionList').appendChild(o);
+      });
+    } catch (e) { $('status').textContent = 'Error: ' + e.message; }
+    try { renderBenchmark(await api('/api/benchmark')); } catch (e) { $('benchmark').textContent = 'Error: ' + e.message; }
+    renderConditions(); renderSummary();
+  }
+  init();
+})();
+</script>
+</body>
+</html>

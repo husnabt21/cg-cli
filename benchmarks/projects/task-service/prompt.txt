@@ -1,0 +1,124 @@
+You are operating under cg-cli compact mode.
+
+Use only the supplied CG-CONTEXT as repository evidence.
+
+If evidence is insufficient, write:
+Need: <exact file or symbol>
+
+Do not greet.
+Do not apologize.
+Do not restate the request.
+Do not explain your process.
+
+Return exactly:
+
+Answer: <direct answer>
+Evidence: <key code/symbol evidence>
+Action: <recommended action or None>
+Risk: <important risk or None>
+
+Keep it short. Put any code or diff inside a fenced code block.
+
+[CG-CONTEXT]
+
+Question:
+Where is user input validated?
+
+Selected node:
+Path: src/validators.ts
+Symbol: validateTaskInput (function)
+Lines: 8-18
+Relations:
+REFERENCES -> ValidationError
+```ts
+export function validateTaskInput(input: { name?: string; ownerId?: string }): void {
+  if (!input.name || input.name.trim().length === 0) {
+    throw new ValidationError('name is required');
+  }
+  if (!input.ownerId) {
+    throw new ValidationError('ownerId is required');
+  }
+  if (input.name.length > MAX_NAME_LENGTH) {
+    throw new ValidationError('name is too long');
+  }
+}
+```
+
+Selected node:
+Path: src/validators.ts
+Symbol: sanitizeName (function)
+Lines: 4-6
+Relations: none
+```ts
+export function sanitizeName(name: string): string {
+  return name.trim().slice(0, MAX_NAME_LENGTH);
+}
+```
+
+Selected node:
+Path: src/errors.ts
+Symbol: ValidationError (class)
+Lines: 7-11
+Relations:
+REFERENCES -> AppError
+```ts
+export class ValidationError extends AppError {
+  constructor(message: string) {
+    super(message, 400);
+  }
+}
+```
+
+Related node (CALLS edge to validateTaskInput (caller)):
+Path: src/service.ts
+Symbol: TaskService.create (method)
+Lines: 10-19
+Relations:
+CALLS -> validateTaskInput
+CALLS -> sanitizeName
+CALLS -> insertTask
+REFERENCES -> Task
+```ts
+  create(input: { name: string; ownerId: string }): Task {
+    validateTaskInput(input);
+    const record: Task = {
+      id: String(Date.now()),
+      name: sanitizeName(input.name),
+      ownerId: input.ownerId,
+      createdAt: Date.now(),
+    };
+    return insertTask(record);
+  }
+```
+
+Related node (CALLS edge to validateTaskInput (caller)):
+Path: src/service.ts
+Symbol: TaskService.rename (method)
+Lines: 30-34
+Relations:
+CALLS -> validateTaskInput
+CALLS -> updateTask
+CALLS -> sanitizeName
+REFERENCES -> Task
+```ts
+  rename(id: string, name: string): Task {
+    validateTaskInput({ name, ownerId: id });
+    cache.delete(id);
+    return updateTask(id, { name: sanitizeName(name) });
+  }
+```
+
+Related node (REFERENCES edge from ValidationError):
+Path: src/errors.ts
+Symbol: AppError (class)
+Lines: 1-5
+Relations: none
+```ts
+export class AppError extends Error {
+  constructor(message: string, public status: number) {
+    super(message);
+  }
+}
+```
+
+[/CG-CONTEXT]

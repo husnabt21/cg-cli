@@ -1,0 +1,7 @@
+﻿Answer: User input is validated in the createTaskHandler function located in src/handlers/taskHandler.ts.
+
+Evidence: Line 14 inspects the request body using validateAccountInput prior to invoking any database operations.
+
+Action: Ensure all incoming HTTP request payloads continue to pass through validateAccountInput before processing.
+
+Risk: None
