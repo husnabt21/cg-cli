@@ -49,6 +49,16 @@ ul{margin:6px 0 6px 18px;padding:0}
 label.chk{display:block;margin:4px 0}
 details summary{cursor:pointer;color:var(--blue);margin:8px 0}
 .scroll{max-height:380px;overflow:auto}
+
+.graphgrid{display:grid;grid-template-columns:2fr 1fr;gap:14px;margin-top:10px}
+@media(max-width:900px){.graphgrid{grid-template-columns:1fr}}
+#graphResults button{margin:0 6px 6px 0;padding:4px 10px;font-weight:500}
+#graphResults small{color:var(--muted)}
+.relrow{margin:2px 0;cursor:pointer;color:var(--text)}
+.relrow:hover{color:var(--teal)}
+.relrow .rt{color:var(--muted)}
+.filters label{margin-right:12px;font-size:13px;color:var(--muted)}
+
 </style>
 </head>
 <body>
@@ -62,6 +72,36 @@ details summary{cursor:pointer;color:var(--blue);margin:8px 0}
     <h2>Pipeline</h2>
     <div class="pipe" id="pipe"></div>
     <p class="note">cg-cli does not execute, control, or inspect the internal tool loop of external AI models. External model comparison is optional and manual.</p>
+  </section>
+
+  <section id="graphSection">
+    <h2>Knowledge Graph Explorer</h2>
+    <p class="note">Explore the structural graph used by cg-cli for graph-guided context retrieval.</p>
+    <div id="graphStats" class="cards"><div class="note">Loading graph...</div></div>
+    <div class="note" id="graphEdgeCounts" style="margin-top:8px"></div>
+    <div class="row">
+      <input class="grow" type="text" id="graphSearch" placeholder="Search symbol or file...">
+    </div>
+    <div id="graphResults" style="margin-top:8px"></div>
+    <div class="filters row">
+      <span class="note">Show relations:</span>
+      <label><input type="checkbox" class="edgeFilter" value="CALLS" checked> CALLS</label>
+      <label><input type="checkbox" class="edgeFilter" value="REFERENCES" checked> REFERENCES</label>
+      <label><input type="checkbox" class="edgeFilter" value="IMPORTS" checked> IMPORTS</label>
+      <label><input type="checkbox" class="edgeFilter" value="EXPORTS"> EXPORTS</label>
+      <label><input type="checkbox" class="edgeFilter" value="CONTAINS"> CONTAINS</label>
+      <label><input type="checkbox" id="showExternal"> external symbols</label>
+    </div>
+    <div class="graphgrid">
+      <div id="graphCanvas"></div>
+      <div id="graphDetail" class="card"><div class="note">Select a node to see its relationships.</div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>How an AI Agent Can Use CG-CLI</h2>
+    <div class="pipe" id="agentPipe"></div>
+    <p class="note">cg-cli does not replace the AI coding agent. It prepares focused repository context that an agent can use when reasoning about a codebase. The agent-facing workflow is documented in SKILL.md. Actual automatic invocation depends on the host agent's supported skill/tool mechanism.</p>
   </section>
 
   <section>
@@ -87,7 +127,8 @@ details summary{cursor:pointer;color:var(--blue);margin:8px 0}
   <div id="analysisOut"></div>
 
   <section>
-    <h2>Caveman Filter - Compact Response Protocol</h2>
+    <h2>Optional Manual Model Evaluation - Caveman Filter (Compact Response Protocol)</h2>
+    <p class="note">The Caveman protocol is a model-neutral response-format prompt used for manual experimentation. It is separate from the core graph-guided retrieval engine.</p>
     <p class="note">A model-neutral prompt. It is not an offline model, it does not rewrite responses, and it does not guarantee that a model complies or preserves meaning.</p>
     <pre id="cavemanText"></pre>
     <div class="row">
@@ -247,10 +288,9 @@ details summary{cursor:pointer;color:var(--blue);margin:8px 0}
       card('Baseline context', fmt(m.baselineChars) + ' chars', 'Estimated tokens (characters &divide; 4): ~' + fmt(m.baselineTokens)) +
       card('Selected context', fmt(m.selectedChars) + ' chars', 'Estimated tokens (characters &divide; 4): ~' + fmt(m.selectedTokens)) +
       card('Context reduction', pct(red), esc(redNote), pcls(red)) +
-      card('Selected nodes', fmt(m.selectedNodes), a.counts.seeds + ' seed(s) + ' + a.counts.related + ' related') +
-      card('Retrieval depth', esc(String(a.retrieval.depth)), a.retrieval.adaptive ? 'Adaptive: expanded = ' + (a.retrieval.confidence.expanded ? 'yes' : 'no') : 'Adaptive: off') +
-      card('Context retrieval units', fmt(m.baselineUnits) + ' &rarr; ' + fmt(m.selectedUnits), 'files &rarr; node slices (NOT AI tool calls)') +
-      card('Actual AI tool calls', NM, 'No agent transcript supplied') + '</div>';
+      card('CG-CLI Retrieval Operations', fmt(m.selectedUnits), 'Local CLI retrieval operations: ' + fmt(m.selectedNodes) + ' selected nodes, each read as one source slice (' + a.counts.seeds + ' seed + ' + a.counts.related + ' related)<br>Not equivalent to AI-model tool calls') +
+      card('Retrieval depth', esc(String(a.retrieval.depth)), a.retrieval.adaptive ? 'Adaptive: expanded = ' + (a.retrieval.confidence.expanded ? 'yes' : 'no') : 'Adaptive: off') + '</div>' +
+      '<p class="note">cg-cli can measure its own retrieval operations. Actual internal tool calls made by an external AI coding agent require an agent transcript or real agent integration and are not claimed here.</p>';
 
     html += '<h3>Baseline policy</h3><div class="note">' + esc(a.baseline.policy) + '</div>';
     html += '<h3>Files</h3><div class="note">Files considered (indexed in demo project): ' + fmt(a.project.files) + ' | files containing selected nodes (= baseline files): ' + fmt(a.baseline.files.length) +
@@ -304,7 +344,7 @@ details summary{cursor:pointer;color:var(--blue);margin:8px 0}
     try {
       var data = await api('/api/analyze', { question: question, depth: Number($('depth').value), adaptive: $('adaptive').checked });
       state.analysis = data;
-      renderAnalysis(data); enableCopy(data);
+      renderAnalysis(data); enableCopy(data); refreshGraph();
       $('status').textContent = data.noMatch ? 'No relevant code found.' : 'Done.';
     } catch (e) {
       $('status').textContent = 'Error: ' + e.message;
@@ -381,8 +421,8 @@ details summary{cursor:pointer;color:var(--blue);margin:8px 0}
       line('Optimized context', m ? fmt(m.selectedChars) + ' characters / ' + fmt(m.selectedTokens) + ' estimated tokens' : NM) +
       line('Estimated context reduction', m ? '<span class="' + pcls(m.reductionPct) + '">' + pct(m.reductionPct) + '</span>' : NM) +
       line('Relevant nodes', m ? fmt(m.selectedNodes) : NM) +
-      line('Retrieval operations (context retrieval units, not AI tool calls)', m ? fmt(m.baselineUnits) + ' files &rarr; ' + fmt(m.selectedUnits) + ' slices' : NM) +
-      line('Actual AI tool calls', NM) + '</div>' +
+      line('CG-CLI retrieval operations (local source-slice reads; not AI-model tool calls)', m ? fmt(m.selectedUnits) : NM) +
+      line('Internal tool calls of an external AI agent', 'Not claimed (requires an agent transcript or real agent integration)') + '</div>' +
       '<div><h3>OUTBOUND - CAVEMAN FILTER</h3>' +
       line('Baseline response', c && c.baseline.provided ? fmt(c.baseline.chars) + ' characters / ' + fmt(c.baseline.estimatedTokens) + ' estimated tokens' : NM) +
       line('Compact response', c && c.compact.provided ? fmt(c.compact.chars) + ' characters / ' + fmt(c.compact.estimatedTokens) + ' estimated tokens' : NM) +
@@ -426,6 +466,189 @@ details summary{cursor:pointer;color:var(--blue);margin:8px 0}
     el.innerHTML = html;
   }
 
+    // ---------- Knowledge Graph Explorer (reads the real index of the demo project) ----------
+  var graph = { data: null, byId: {}, selected: null, wired: false };
+  var REL_IN = { CONTAINS: 'CONTAINED IN', IMPORTS: 'IMPORTED BY', EXPORTS: 'EXPORTED BY', CALLS: 'CALLED BY', REFERENCES: 'REFERENCED BY' };
+  var REL_ORDER = ['CONTAINS', 'IMPORTS', 'EXPORTS', 'CALLS', 'REFERENCES'];
+  var AGENT_STEPS = ['Developer Question', 'cg-cli', 'Knowledge Graph', 'Relevant Repository Context', 'AI Coding Agent', 'Developer Answer'];
+
+  if ($('agentPipe')) {
+    $('agentPipe').innerHTML = AGENT_STEPS.map(function (s, i) {
+      return '<div class="step">' + esc(s) + '</div>' + (i < AGENT_STEPS.length - 1 ? '<span class="arrow">&rarr;</span>' : '');
+    }).join('');
+  }
+
+  function nodeText(n) { return n.type === 'file' ? n.file : n.name; }
+  function typeName(t) { return t.charAt(0).toUpperCase() + t.slice(1); }
+  function clip(s, max) { return s.length > max ? s.slice(0, max - 1) + '...' : s; }
+  function relLabel(m, from) {
+    if (m.type === 'file') return m.file;
+    if (m.module) return m.name + ' (' + m.module + ')';
+    return m.file !== from.file ? m.name + ' (' + m.file + ')' : m.name;
+  }
+
+  function selectNode(id) {
+    graph.selected = id;
+    renderGraphExplorer();
+    renderDetail();
+  }
+
+  function renderSearch() {
+    var q = $('graphSearch').value.trim().toLowerCase(), box = $('graphResults');
+    if (!q) { box.innerHTML = ''; return; }
+    var hits = graph.data.nodes.filter(function (n) {
+      return !n.module && (n.name.toLowerCase().indexOf(q) !== -1 || n.file.toLowerCase().indexOf(q) !== -1);
+    }).slice(0, 12);
+    box.innerHTML = hits.length
+      ? hits.map(function (n) { return '<button class="alt" data-id="' + esc(n.id) + '">' + esc(nodeText(n)) + ' <small>(' + esc(n.type) + ')</small></button>'; }).join('')
+      : '<span class="note">No matching symbol or file.</span>';
+  }
+
+  function renderDetail() {
+    var el = $('graphDetail');
+    var n = graph.selected ? graph.byId[graph.selected] : null;
+    if (!n) { el.innerHTML = '<div class="note">Select a node in the graph or in the search results to see its relationships.</div>'; return; }
+
+    var out = {}, inn = {}, total = 0;
+    graph.data.edges.forEach(function (e) {
+      if (e.from === n.id && graph.byId[e.to]) { (out[e.type] = out[e.type] || []).push(graph.byId[e.to]); total++; }
+      if (e.to === n.id && graph.byId[e.from]) { (inn[e.type] = inn[e.type] || []).push(graph.byId[e.from]); total++; }
+    });
+
+    var html = '<div class="mono"><b>' + esc(nodeText(n)) + '</b></div>' +
+      '<div class="note">Type: ' + esc(typeName(n.type)) + (n.module ? ' (external, module ' + esc(n.module) + ')' : '') + '</div>' +
+      '<div class="note">File: <span class="mono">' + esc(n.module ? '(external)' : n.file) + '</span></div>' +
+      (n.module ? '' : '<div class="note">Location: lines ' + n.startLine + '-' + n.endLine + '</div>') +
+      '<div class="note">Connected nodes (relations): ' + total + '</div>';
+
+    if (state.analysis && !state.analysis.noMatch) {
+      state.analysis.graph.nodes.forEach(function (g) {
+        if (g.id === n.id) html += '<div class="note" style="color:var(--teal)">Selected by the last Analyze (' + esc(g.role) + ').</div>';
+      });
+    }
+
+    var rows = [];
+    REL_ORDER.forEach(function (t) { (out[t] || []).forEach(function (m) { rows.push(['<span class="rt">' + t + ' &rarr;</span> ', m]); }); });
+    REL_ORDER.forEach(function (t) { (inn[t] || []).forEach(function (m) { rows.push(['<span class="rt">' + REL_IN[t] + ' &larr;</span> ', m]); }); });
+
+    html += '<h3>Relations</h3>';
+    if (rows.length === 0) html += '<div class="note">No relations.</div>';
+    rows.slice(0, 60).forEach(function (r) {
+      html += '<div class="relrow mono" data-id="' + esc(r[1].id) + '">' + r[0] + esc(relLabel(r[1], n)) + '</div>';
+    });
+    if (rows.length > 60) html += '<div class="note">... and ' + (rows.length - 60) + ' more</div>';
+    el.innerHTML = html;
+  }
+
+  function renderGraphExplorer() {
+    if (!graph.data) return;
+    var showExt = $('showExternal').checked;
+    var types = {};
+    Array.prototype.forEach.call(document.querySelectorAll('.edgeFilter'), function (c) { if (c.checked) types[c.value] = true; });
+
+    var nodes = graph.data.nodes.filter(function (n) { return showExt || !n.module; });
+    var groups = {}, keys = [];
+    nodes.forEach(function (n) {
+      var k = n.module ? '(external modules)' : n.file;
+      if (!groups[k]) { groups[k] = []; keys.push(k); }
+      groups[k].push(n);
+    });
+    keys.sort();
+
+    var CW = 300, CH = 250, cols = Math.max(1, Math.ceil(Math.sqrt(keys.length * 1.5)));
+    var rowsN = Math.ceil(keys.length / cols), pos = {}, labels = '';
+    keys.forEach(function (k, gi) {
+      var cx = (gi % cols) * CW + CW / 2, cy = Math.floor(gi / cols) * CH + CH / 2 + 12;
+      var list = groups[k], r = list.length === 1 ? 0 : Math.min(95, 28 + list.length * 8);
+      labels += '<text x="' + cx + '" y="' + (cy - r - 22) + '" fill="#4f9cf9" font-size="11" text-anchor="middle">' + esc(k.length > 34 ? '...' + k.slice(-31) : k) + '</text>';
+      list.forEach(function (n, i) {
+        var a = (2 * Math.PI * i) / list.length - Math.PI / 2;
+        pos[n.id] = { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) };
+      });
+    });
+
+    var sel = graph.selected, lines = '';
+    graph.data.edges.forEach(function (e) {
+      if (!types[e.type]) return;
+      var a = pos[e.from], b = pos[e.to];
+      if (!a || !b) return;
+      var hot = sel && (e.from === sel || e.to === sel);
+      lines += '<line x1="' + a.x + '" y1="' + a.y + '" x2="' + b.x + '" y2="' + b.y + '" stroke="' + (EDGE_COLOR[e.type] || '#8da2c0') +
+        '" stroke-width="' + (hot ? 2.6 : 1.1) + '" opacity="' + (hot ? 1 : (sel ? 0.18 : 0.5)) + '" marker-end="url(#garr)"/>';
+    });
+
+    var picked = {};
+    if (state.analysis && !state.analysis.noMatch) state.analysis.graph.nodes.forEach(function (g) { picked[g.id] = g.role; });
+
+    var dots = '';
+    nodes.forEach(function (n) {
+      var p = pos[n.id], isSel = n.id === sel;
+      var stroke = isSel ? '#ffffff' : (picked[n.id] ? '#2dd4bf' : '#0a1424');
+      var label = clip(n.type === 'file' ? n.name : n.name, 22);
+      dots += '<g data-id="' + esc(n.id) + '" style="cursor:pointer"><title>' + esc(nodeText(n)) + ' (' + esc(n.type) + ')</title>' +
+        '<circle cx="' + p.x + '" cy="' + p.y + '" r="' + (isSel ? 11 : 8) + '" fill="' + (NODE_COLOR[n.type] || '#8da2c0') + '" stroke="' + stroke + '" stroke-width="2.5"/>' +
+        '<text x="' + p.x + '" y="' + (p.y + 21) + '" fill="#e6edf7" font-size="10" text-anchor="middle">' + esc(label) + '</text></g>';
+    });
+
+    var svg = '<svg viewBox="0 0 ' + (cols * CW) + ' ' + (rowsN * CH + 20) + '" style="width:100%;background:#08111f;border:1px solid var(--border);border-radius:8px">' +
+      '<defs><marker id="garr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#8da2c0"/></marker></defs>' +
+      labels + lines + dots + '</svg>';
+
+    var legend = '<p class="note">Nodes are grouped by file. Node color = type: ' +
+      Object.keys(NODE_COLOR).map(function (k) { return '<span style="color:' + NODE_COLOR[k] + '">' + k + '</span>'; }).join(', ') +
+      '. Edge color = relation: ' + Object.keys(EDGE_COLOR).map(function (k) { return '<span style="color:' + EDGE_COLOR[k] + '">' + k + '</span>'; }).join(', ') +
+      '. White ring = selected node; teal ring = selected by the last Analyze. All nodes and edges come from the real index.</p>';
+
+    $('graphCanvas').innerHTML = svg + legend;
+  }
+
+  function refreshGraph() {
+    if (!graph.data) return;
+    renderGraphExplorer();
+    if (graph.selected) renderDetail();
+  }
+
+  function wireGraphUi() {
+    if (graph.wired) return;
+    graph.wired = true;
+    $('graphSearch').addEventListener('input', renderSearch);
+    $('showExternal').addEventListener('change', renderGraphExplorer);
+    Array.prototype.forEach.call(document.querySelectorAll('.edgeFilter'), function (c) { c.addEventListener('change', renderGraphExplorer); });
+    ['graphCanvas', 'graphResults', 'graphDetail'].forEach(function (id) {
+      $(id).addEventListener('click', function (ev) {
+        var t = ev.target;
+        while (t && t !== this && !(t.getAttribute && t.getAttribute('data-id'))) t = t.parentNode;
+        if (t && t !== this && t.getAttribute('data-id')) selectNode(t.getAttribute('data-id'));
+      });
+    });
+  }
+
+  async function loadGraph() {
+    if (!$('graphStats')) return;
+    var box = $('graphStats');
+    try {
+      var d = await api('/api/graph');
+      if (!d.available) {
+        box.innerHTML = '<div class="warnbox">No graph available. Run "node benchmarks/generate.js" in the cg-cli folder, then reload.</div>';
+        return;
+      }
+      graph.data = d;
+      graph.byId = {};
+      d.nodes.forEach(function (n) { graph.byId[n.id] = n; });
+      var s = d.stats;
+      box.innerHTML = card('Files', fmt(s.files), esc(d.path)) + card('Nodes', fmt(s.nodes), 'incl. ' + fmt(s.externalSymbols) + ' external') +
+        card('Edges', fmt(s.edges), 'from .cg/index.json') + card('Functions', fmt(s.functions), '') + card('Classes', fmt(s.classes), 'methods: ' + fmt(s.methods)) +
+        card('Symbols', fmt(s.symbols), 'interfaces, types, constants');
+      $('graphEdgeCounts').innerHTML = 'Edges by type: ' + REL_ORDER.map(function (t) { return t + ' ' + fmt(s.edgeCounts[t] || 0); }).join(' | ') +
+        ' | indexed at ' + esc(d.indexedAt);
+      wireGraphUi();
+      renderGraphExplorer();
+      renderDetail();
+    } catch (e) {
+      box.textContent = 'Error: ' + e.message;
+    }
+  }
+
   // ---------- init ----------
   async function init() {
     EV.forEach(function (e) { $(e[0]).addEventListener('change', saveEval); });
@@ -452,7 +675,7 @@ details summary{cursor:pointer;color:var(--blue);margin:8px 0}
         var o = document.createElement('option'); o.value = q.question; o.textContent = q.id + ' - ' + q.question; $('questionList').appendChild(o);
       });
     } catch (e) { $('status').textContent = 'Error: ' + e.message; }
-    try { renderBenchmark(await api('/api/benchmark')); } catch (e) { $('benchmark').textContent = 'Error: ' + e.message; }
+    try { renderBenchmark(await api('/api/benchmark')); loadGraph(); } catch (e) { $('benchmark').textContent = 'Error: ' + e.message; }
     renderConditions(); renderSummary();
   }
   init();

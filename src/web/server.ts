@@ -346,6 +346,47 @@ function benchmarkSummary(): object {
   };
 }
 
+/** The real graph of the demo project (read from its .cg/index.json; indexed once if missing). */
+async function graphData(): Promise<object> {
+  if (!fs.existsSync(DEMO_ROOT)) return { available: false };
+
+  let loaded: CgIndex | null = loadIndex(DEMO_ROOT);
+  if (!loaded) loaded = (await indexProject(DEMO_ROOT)).index;
+  const index: CgIndex = loaded;
+
+  const countType = (type: string): number => index.nodes.filter((n) => n.type === type && !n.module).length;
+  const edgeCounts: Record<string, number> = {};
+  for (const e of index.edges) edgeCounts[e.type] = (edgeCounts[e.type] ?? 0) + 1;
+
+  return {
+    available: true,
+    project: DEMO_NAME,
+    path: 'benchmarks/projects/' + DEMO_NAME,
+    indexedAt: index.indexedAt,
+    stats: {
+      files: index.files.length,
+      nodes: index.nodes.length,
+      edges: index.edges.length,
+      functions: countType('function'),
+      classes: countType('class'),
+      methods: countType('method'),
+      symbols: countType('symbol'),
+      externalSymbols: index.nodes.filter((n) => !!n.module).length,
+      edgeCounts,
+    },
+    nodes: index.nodes.map((n) => ({
+      id: n.id,
+      type: n.type,
+      name: n.name,
+      file: n.file,
+      startLine: n.startLine,
+      endLine: n.endLine,
+      module: n.module ?? null,
+    })),
+    edges: index.edges.map((e) => ({ from: e.from, to: e.to, type: e.type })),
+  };
+}
+
 // ---------- server ----------
 async function handle(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
   const url = new URL(req.url ?? '/', 'http://localhost');
@@ -370,6 +411,8 @@ async function handle(req: http.IncomingMessage, res: http.ServerResponse): Prom
       });
     case 'GET /api/benchmark':
       return sendJson(res, 200, benchmarkSummary());
+    case 'GET /api/graph':
+      return sendJson(res, 200, await graphData());
     case 'POST /api/analyze':
       return sendJson(res, 200, await analyze(parseJson(await readBody(req))));
     case 'POST /api/compare':

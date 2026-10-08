@@ -168,10 +168,34 @@ response-length reduction. Correctness and equivalence are judged by you with th
 node (not the whole repository). **Benchmark/ablation:** read from `benchmarks/results/runs.json`
 (written by `cg benchmark`); if it does not exist the dashboard says "No benchmark results available."
 
-**Measured:** context size and estimated tokens, context reduction, retrieved nodes, context retrieval
-units, retrieval recall against gold symbols (benchmark cases only), response length. **Not measured:**
+**Measured:** context size and estimated tokens, context reduction, retrieved nodes, cg-cli retrieval operations (source slices read), retrieval recall against gold symbols (benchmark cases only), response length. **Not measured:**
 actual AI tool calls, real tokenizer counts, answer correctness or functional equivalence.
 Limitations are listed at the end of the dashboard page and in the Limitations section above.
+
+## Using CG-CLI with AI Coding Agents
+
+CG-CLI prepares repository context; it does not itself generate the final AI answer.
+
+1. Index the repository: `cg index`.
+2. Ask cg-cli for context relevant to the developer question: `cg context "<question>"`
+   (add `--trace` to see why each node was selected).
+3. The graph-guided retrieval engine selects relevant repository context: top-ranked symbols plus
+   their direct graph neighbours, as exact source slices within a character budget.
+4. An external coding agent or model can use that context to reason about the code.
+5. `SKILL.md` documents the agent-facing workflow (commands, how to read the output, limitations).
+
+Automatic invocation by Claude Code, Codex or any other agent depends on that host agent's supported
+skill/tool mechanism. This repository does not implement or test such an integration, and cg-cli does
+not control an agent's internal tool loop.
+
+### Knowledge Graph Explorer
+
+The web dashboard (`cg dashboard`) includes a Knowledge Graph Explorer for the demo project. It reads
+the real `.cg/index.json` (nodes and edges are never synthesized), shows file/node/edge/function/class/
+method/symbol counts, lets you search a symbol or file, filter relation types
+(CONTAINS, IMPORTS, EXPORTS, CALLS, REFERENCES) and inspect a node's relations. Nodes selected by the
+last "Analyze" are marked. The Caveman prompt and manual response comparison are kept as an
+"Optional Manual Model Evaluation" and are separate from the retrieval engine.
 
 ## Limitations
 
